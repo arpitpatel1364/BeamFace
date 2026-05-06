@@ -30,8 +30,6 @@ jitter so the beam tracks faces without stuttering.
 ![Main Interface](images/main_interface.png)
 *Figure 1: BeamFace Main Interface and Control Panel*
 
-![Face Detection in Action](images/face_detect.png)
-*Figure 2: Real-time Face Tracking and Beam Steering*
 
 ---
 
