@@ -1,7 +1,7 @@
 numpy
 scipy
 PyQt5
-opencv-python
+opencv-python-headless
 mediapipe
 sounddevice
 matplotlib
