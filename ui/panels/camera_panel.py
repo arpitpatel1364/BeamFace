@@ -7,9 +7,11 @@ the BeamController, and emits signals for the rest of the UI.
 
 import logging
 
+import time
+
 import cv2
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -33,6 +35,36 @@ _COLOR_TRACKING_LINE = (0, 170, 255)
 _FRAME_RATE_MS = 33                 # ~30fps timer interval
 
 
+class VideoWorker(QThread):
+    """
+    Worker thread to read camera frames and run face detection off the main UI thread.
+    Emits frame_processed(frame, face_data) when a frame is ready.
+    """
+    frame_processed = pyqtSignal(object, object)
+
+    def __init__(self, face_detector):
+        super().__init__()
+        self.face_detector = face_detector
+        self._running = True
+
+    def run(self):
+        while self._running:
+            start_time = time.time()
+            
+            frame = self.face_detector.read_frame()
+            if frame is not None:
+                face_data = self.face_detector.get_face_data(frame)
+                self.frame_processed.emit(frame, face_data)
+                
+            elapsed = time.time() - start_time
+            sleep_time = max(0, (_FRAME_RATE_MS / 1000.0) - elapsed)
+            time.sleep(sleep_time)
+
+    def stop(self):
+        self._running = False
+        self.wait()
+
+
 class CameraPanel(QWidget):
     """
     Widget displaying the live camera feed with face-tracking overlays.
@@ -53,9 +85,9 @@ class CameraPanel(QWidget):
 
         self._build_ui()
 
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self.update_frame)
-        self._timer.start(_FRAME_RATE_MS)
+        self._worker = VideoWorker(self.face_detector)
+        self._worker.frame_processed.connect(self.update_frame)
+        self._worker.start()
 
     def _build_ui(self):
         """Create and arrange the video display label."""
@@ -70,18 +102,11 @@ class CameraPanel(QWidget):
         )
         layout.addWidget(self.video_label)
 
-    def update_frame(self):
+    def update_frame(self, frame, face_data):
         """
-        Read one camera frame, run detection, update controller, draw overlays.
-
-        Called by the QTimer on the main thread. Emits frame_updated with the
-        latest FaceData and controller status after drawing.
+        Receive processed frame and face_data from the worker thread.
+        Update controller, draw overlays, and emit frame_updated signal.
         """
-        frame = self.face_detector.read_frame()
-        if frame is None:
-            return
-
-        face_data = self.face_detector.get_face_data(frame)
         self.beam_controller.update_from_face(face_data)
         self.beam_controller.lerp_step()
 

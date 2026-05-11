@@ -5,6 +5,7 @@ Implements delay-and-sum beamforming for a uniform linear array (ULA).
 All physics is based on far-field plane-wave propagation assumptions.
 """
 
+# pyright: ignore [missing-import]
 import numpy as np
 from core.config import SPEED_OF_SOUND, SAMPLE_RATE, NUM_SPEAKERS
 
@@ -39,23 +40,22 @@ def compute_delays(
     theta_rad = np.radians(steering_angle_deg)
     # Propagation delay: time for wavefront to travel across the array
     delay_sec = (speaker_positions * np.sin(theta_rad)) / SPEED_OF_SOUND
-    delay_samples = np.round(delay_sec * SAMPLE_RATE).astype(np.int32)
+    delay_samples = (delay_sec * SAMPLE_RATE).astype(np.float32)
     return delay_samples
 
 
-def apply_delay_to_signal(signal: np.ndarray, delay_samples: int) -> np.ndarray:
+def apply_delay_to_signal(signal: np.ndarray, delay_samples: float) -> np.ndarray:
     """
-    Shift a signal by a given number of samples using zero-padding.
+    Shift a signal by a given number of samples using zero-padding and linear interpolation.
 
     Positive delay: pads zeros at the start, trims the tail.
     Negative delay: pads zeros at the end, trims the head.
-    Never uses np.roll (which wraps around rather than padding with silence).
 
     Parameters
     ----------
     signal : np.ndarray
         Input mono audio signal, float32.
-    delay_samples : int
+    delay_samples : float
         Number of samples to shift. Positive = delay, negative = advance.
 
     Returns
@@ -66,20 +66,32 @@ def apply_delay_to_signal(signal: np.ndarray, delay_samples: int) -> np.ndarray:
     n = len(signal)
     signal = signal.astype(np.float32)
 
-    if delay_samples == 0:
+    if delay_samples == 0.0:
         return signal.copy()
 
-    if delay_samples > 0:
-        # Insert silence at the front, discard samples from the tail
-        pad = np.zeros(delay_samples, dtype=np.float32)
-        delayed = np.concatenate([pad, signal])
-        return delayed[:n]
+    delay_int = int(np.floor(delay_samples))
+    frac = delay_samples - delay_int
+
+    if delay_int > 0:
+        pad1 = np.zeros(delay_int, dtype=np.float32)
+        delayed_1 = np.concatenate([pad1, signal])[:n]
+        pad2 = np.zeros(delay_int + 1, dtype=np.float32)
+        delayed_2 = np.concatenate([pad2, signal])[:n]
+    elif delay_int == 0:
+        delayed_1 = signal.copy()
+        pad2 = np.zeros(1, dtype=np.float32)
+        delayed_2 = np.concatenate([pad2, signal])[:n]
     else:
-        # Advance the signal: discard samples from the front, pad the tail
-        advance = -delay_samples
-        pad = np.zeros(advance, dtype=np.float32)
-        advanced = np.concatenate([signal[advance:], pad])
-        return advanced[:n]
+        advance = -delay_int
+        pad1 = np.zeros(advance, dtype=np.float32)
+        delayed_1 = np.concatenate([signal[advance:], pad1])[:n]
+        if advance > 1:
+            pad2 = np.zeros(advance - 1, dtype=np.float32)
+            delayed_2 = np.concatenate([signal[advance - 1:], pad2])[:n]
+        else:
+            delayed_2 = signal.copy()
+
+    return (1.0 - frac) * delayed_1 + frac * delayed_2
 
 
 def apply_beamforming(
@@ -128,7 +140,7 @@ def apply_beamforming(
     for i in range(NUM_SPEAKERS):
         # Apply time delay: each speaker fires early or late so that
         # signals converge at the target angle in the far field.
-        delayed = apply_delay_to_signal(signal, int(delays[i]))
+        delayed = apply_delay_to_signal(signal, float(delays[i]))
         # Apply aperture taper: controls the spatial frequency content
         # of the array and shapes the beam directivity pattern.
         speaker_signals[i] = delayed * weights[i]
@@ -173,12 +185,12 @@ def compute_pattern_db(
         # Propagation delay from each speaker to a far-field listener at 'angle'
         theta_rad = np.radians(angle)
         delays_sec = (speaker_positions * np.sin(theta_rad)) / SPEED_OF_SOUND
-        delay_samples = np.round(delays_sec * SAMPLE_RATE).astype(np.int32)
+        delay_samples = (delays_sec * SAMPLE_RATE).astype(np.float32)
 
         summed = np.zeros(speaker_signals.shape[1], dtype=np.float32)
         for i in range(NUM_SPEAKERS):
             propagated = apply_delay_to_signal(
-                speaker_signals[i], int(delay_samples[i])
+                speaker_signals[i], float(delay_samples[i])
             )
             summed += propagated
 

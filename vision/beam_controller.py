@@ -31,7 +31,9 @@ class BeamController:
         self._current_angle = 0.0
         self._target_angle = 0.0
         self._smoothing = SMOOTHING_FACTOR
-        self._angle_history = []
+        self._kf_x = 0.0
+        self._kf_p = 1.0
+        self._kf_initialized = False
         self.face_detected = False
         self.current_rms_db = -60.0
 
@@ -54,14 +56,15 @@ class BeamController:
         else:
             self.set_target(0.0)
             self.face_detected = False
+            with self._lock:
+                self._kf_initialized = False
 
     def _smooth(self, angle: float) -> float:
         """
-        Apply a weighted rolling average to reduce face angle jitter.
+        Apply a 1D Kalman Filter to track and smooth the face angle.
 
-        More recent values receive higher weights [1, 2, 3, 4, 5] (trimmed
-        to the available history length). This gives a smooth trajectory
-        without the lag of a simple moving average.
+        Provides buttery-smooth predictive tracking and handles noisy detections
+        better than a simple rolling average.
 
         Parameters
         ----------
@@ -74,17 +77,24 @@ class BeamController:
             Smoothed angle in degrees.
         """
         with self._lock:
-            self._angle_history.append(angle)
-            if len(self._angle_history) > MAX_ANGLE_HISTORY:
-                self._angle_history = self._angle_history[-MAX_ANGLE_HISTORY:]
+            if not self._kf_initialized:
+                self._kf_x = angle
+                self._kf_p = 1.0
+                self._kf_initialized = True
+                return self._kf_x
 
-            history_len = len(self._angle_history)
-            weights = np.arange(1, MAX_ANGLE_HISTORY + 1, dtype=np.float32)
-            weights = weights[-history_len:]
-            weighted_avg = float(
-                np.average(self._angle_history, weights=weights)
-            )
-            return weighted_avg
+            # Prediction update
+            q = 0.1  # Process noise covariance
+            r = 2.0  # Measurement noise covariance
+            
+            self._kf_p = self._kf_p + q
+
+            # Measurement update
+            k = self._kf_p / (self._kf_p + r)
+            self._kf_x = self._kf_x + k * (angle - self._kf_x)
+            self._kf_p = (1 - k) * self._kf_p
+
+            return self._kf_x
 
     def set_target(self, angle_deg: float):
         """

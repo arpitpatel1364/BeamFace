@@ -398,13 +398,18 @@ class MainWindow(QMainWindow):
     def _on_camera_restart(self, camera_index: int):
         """Restart the camera at the specified device index."""
         logger.info("Restarting camera at index %d", camera_index)
-        self.camera_panel._timer.stop()
+        self.camera_panel._worker.stop()
         self.face_detector.release()
         self.face_detector = FaceDetector(camera_index=camera_index)
         try:
             self.face_detector.initialize()
             self.camera_panel.face_detector = self.face_detector
-            self.camera_panel._timer.start(33)
+            
+            from ui.panels.camera_panel import VideoWorker
+            self.camera_panel._worker = VideoWorker(self.face_detector)
+            self.camera_panel._worker.frame_processed.connect(self.camera_panel.update_frame)
+            self.camera_panel._worker.start()
+            
             logger.info("Camera restarted successfully")
         except RuntimeError as exc:
             logger.error("Camera restart failed: %s", exc)
@@ -452,7 +457,7 @@ class MainWindow(QMainWindow):
         """Clean up all resources on window close."""
         logger.info("Shutting down BeamFace")
         try:
-            self.camera_panel._timer.stop()
+            self.camera_panel._worker.stop()
             self._pattern_timer.stop()
             self._status_timer.stop()
             self.audio_engine.stop()
