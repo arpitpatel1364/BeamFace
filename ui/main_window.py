@@ -154,7 +154,7 @@ class MainWindow(QMainWindow):
 
         lbl_name = QLabel(APP_NAME)
         lbl_name.setStyleSheet(
-            f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_TITLE}pt; font-weight: bold;"
+            f"color: {ACCENT_COLOR}; font-size: {FONT_SIZE_TITLE + 2}pt; font-weight: 800; letter-spacing: 1px;"
         )
 
         lbl_subtitle = QLabel("Acoustic Beamforming Simulation")
@@ -231,8 +231,8 @@ class MainWindow(QMainWindow):
 
         lbl_value = QLabel(initial_value)
         lbl_value.setStyleSheet(
-            f"color: {TEXT_PRIMARY}; font-size: {FONT_SIZE_LARGE}pt; "
-            "font-family: 'Courier New', Courier, monospace; font-weight: bold;"
+            f"color: {ACCENT_COLOR}; font-size: {FONT_SIZE_LARGE + 6}pt; "
+            "font-weight: 800;"
         )
         lbl_value.setAlignment(Qt.AlignCenter)
 
@@ -288,7 +288,7 @@ class MainWindow(QMainWindow):
             sq.setFixedSize(24, 24)
             sq.setStyleSheet(
                 f"background-color: {color}; border: 1px solid {BORDER_COLOR}; "
-                "border-radius: 3px;"
+                "border-radius: 12px;"
             )
             layout.addWidget(sq)
             self._speaker_indicators.append(sq)
@@ -314,7 +314,7 @@ class MainWindow(QMainWindow):
         card.setStyleSheet(
             f"background-color: {BACKGROUND_CARD}; "
             f"border: 1px solid {BORDER_COLOR}; "
-            "border-radius: 6px;"
+            "border-radius: 10px;"
         )
         return card
 

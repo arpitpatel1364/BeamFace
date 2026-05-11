@@ -25,7 +25,7 @@ from ui.theme import (
 
 logger = logging.getLogger("beamface.status_bar")
 
-_MONOSPACE_STYLE = "font-family: 'Courier New', Courier, monospace; font-size: 9pt;"
+_MONOSPACE_STYLE = "font-family: 'Roboto Mono', 'Consolas', 'Courier New', monospace; font-size: 10pt; font-weight: 600;"
 
 
 def _make_divider() -> QFrame:

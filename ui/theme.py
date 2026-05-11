@@ -7,40 +7,40 @@ PyQt5 QSS string for the application.
 """
 
 # Background colors
-BACKGROUND_DARK = "#0d0d0d"
-BACKGROUND_PANEL = "#141414"
-BACKGROUND_CARD = "#1a1a1a"
+BACKGROUND_DARK = "#0f172a"
+BACKGROUND_PANEL = "#1e293b"
+BACKGROUND_CARD = "#334155"
 
 # Borders
-BORDER_COLOR = "#2a2a2a"
+BORDER_COLOR = "#475569"
 
 # Accent colors
-ACCENT_COLOR = "#00aaff"
-ACCENT_SECONDARY = "#0066cc"
+ACCENT_COLOR = "#38bdf8"
+ACCENT_SECONDARY = "#0ea5e9"
 
 # Text colors
-TEXT_PRIMARY = "#ffffff"
-TEXT_SECONDARY = "#888888"
-TEXT_MUTED = "#444444"
+TEXT_PRIMARY = "#f8fafc"
+TEXT_SECONDARY = "#94a3b8"
+TEXT_MUTED = "#64748b"
 
 # Semantic colors
-SUCCESS_COLOR = "#00cc66"
-WARNING_COLOR = "#ffaa00"
-DANGER_COLOR = "#ff3333"
+SUCCESS_COLOR = "#10b981"
+WARNING_COLOR = "#f59e0b"
+DANGER_COLOR = "#ef4444"
 
 # Plot colors
-PLOT_BG = "#0a0a0a"
-PLOT_GRID = "#1e1e1e"
-PLOT_LINE = "#00aaff"
-PLOT_BEAM = "#ff6600"
+PLOT_BG = "#0f172a"
+PLOT_GRID = "#334155"
+PLOT_LINE = "#38bdf8"
+PLOT_BEAM = "#f59e0b"
 
 # Typography
-FONT_FAMILY = "Segoe UI"
+FONT_FAMILY = "Inter, Segoe UI, Roboto"
 FONT_SIZE_SMALL = 9
 FONT_SIZE_NORMAL = 10
-FONT_SIZE_LARGE = 12
-FONT_SIZE_TITLE = 14
-FONT_SIZE_HEADER = 11
+FONT_SIZE_LARGE = 13
+FONT_SIZE_TITLE = 16
+FONT_SIZE_HEADER = 12
 
 
 def get_stylesheet() -> str:
@@ -86,27 +86,28 @@ def get_stylesheet() -> str:
         background-color: {BACKGROUND_CARD};
         color: {TEXT_PRIMARY};
         border: 1px solid {BORDER_COLOR};
-        border-radius: 4px;
-        padding: 6px 14px;
+        border-radius: 6px;
+        padding: 8px 16px;
         font-size: {FONT_SIZE_NORMAL}pt;
+        font-weight: 500;
         font-family: "{FONT_FAMILY}", Arial, sans-serif;
     }}
 
     QPushButton:hover {{
         background-color: {ACCENT_COLOR};
-        color: #000000;
+        color: #0f172a;
         border: 1px solid {ACCENT_COLOR};
     }}
 
     QPushButton:pressed {{
         background-color: {ACCENT_SECONDARY};
-        color: #000000;
+        color: #0f172a;
     }}
 
     QPushButton:disabled {{
         background-color: {BACKGROUND_PANEL};
         color: {TEXT_MUTED};
-        border: 1px solid {TEXT_MUTED};
+        border: 1px solid {BORDER_COLOR};
     }}
 
     /* ====== Sliders ====== */
@@ -180,9 +181,9 @@ def get_stylesheet() -> str:
     QGroupBox {{
         background-color: {BACKGROUND_PANEL};
         border: 1px solid {BORDER_COLOR};
-        border-radius: 6px;
+        border-radius: 8px;
         margin-top: 14px;
-        padding: 8px;
+        padding: 12px;
         font-size: {FONT_SIZE_NORMAL}pt;
         color: {TEXT_SECONDARY};
     }}
@@ -261,7 +262,7 @@ def get_stylesheet() -> str:
     QTabWidget::pane {{
         background-color: {BACKGROUND_PANEL};
         border: 1px solid {BORDER_COLOR};
-        border-radius: 4px;
+        border-radius: 6px;
     }}
 
     QTabBar::tab {{

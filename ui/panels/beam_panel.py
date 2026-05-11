@@ -140,12 +140,12 @@ class BeamPanel(QWidget):
 
         # Main beam pattern fill
         self.ax.fill(angles_rad, db_clipped - _RLIM_MIN,
-                     color=PLOT_LINE, alpha=0.12)
+                     color=PLOT_LINE, alpha=0.25)
 
         # Main beam pattern line
         self.ax.plot(
             angles_rad, db_clipped - _RLIM_MIN,
-            color=PLOT_LINE, linewidth=1.5, label="Pattern",
+            color=PLOT_LINE, linewidth=2.5, label="Pattern",
         )
 
         # Current steering angle indicator
@@ -161,7 +161,7 @@ class BeamPanel(QWidget):
         self.ax.plot(
             [target_rad, target_rad],
             [0, _RLIM_MAX - _RLIM_MIN],
-            color=WARNING_COLOR, linewidth=1, linestyle="--",
+            color=WARNING_COLOR, linewidth=1.5, linestyle="--", alpha=0.8,
             label=f"Target {target_angle:.1f} deg",
         )
 
@@ -192,10 +192,11 @@ class BeamPanel(QWidget):
         self.ax.spines["polar"].set_edgecolor(PLOT_GRID)
 
         self.ax.set_title(
-            f"Beam Pattern  |  Steering: {current_angle:.1f} deg",
+            f"Beam Pattern  |  Steering: {current_angle:.1f}°",
             color=TEXT_PRIMARY,
-            fontsize=FONT_SIZE_NORMAL,
-            pad=12,
+            fontsize=FONT_SIZE_NORMAL + 2,
+            fontweight='bold',
+            pad=16,
         )
 
         self.canvas.draw()
