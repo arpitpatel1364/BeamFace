@@ -9,6 +9,7 @@ visual responsiveness with CPU cost.
 import logging
 import traceback
 
+
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure

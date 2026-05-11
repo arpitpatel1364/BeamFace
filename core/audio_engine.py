@@ -12,6 +12,7 @@ import threading
 import logging
 import traceback
 
+
 import numpy as np
 
 from core.config import SAMPLE_RATE, BLOCK_SIZE, DEFAULT_FREQUENCY, DEFAULT_DURATION
@@ -151,6 +152,8 @@ class AudioEngine:
         self._producer_thread.start()
 
         try:
+            
+            # pyrefly: ignore [missing-import]
             import sounddevice as sd
             self.stream = sd.OutputStream(
                 samplerate=self.sample_rate,

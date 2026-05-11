@@ -5,7 +5,7 @@ Implements delay-and-sum beamforming for a uniform linear array (ULA).
 All physics is based on far-field plane-wave propagation assumptions.
 """
 
-# pyright: ignore [missing-import]
+
 import numpy as np
 from core.config import SPEED_OF_SOUND, SAMPLE_RATE, NUM_SPEAKERS
 
@@ -48,8 +48,8 @@ def apply_delay_to_signal(signal: np.ndarray, delay_samples: float) -> np.ndarra
     """
     Shift a signal by a given number of samples using zero-padding and linear interpolation.
 
-    Positive delay: pads zeros at the start, trims the tail.
-    Negative delay: pads zeros at the end, trims the head.
+    Positive delay: shifts signal to the right (pads zeros at the start).
+    Negative delay: shifts signal to the left (pads zeros at the end).
 
     Parameters
     ----------
@@ -72,24 +72,20 @@ def apply_delay_to_signal(signal: np.ndarray, delay_samples: float) -> np.ndarra
     delay_int = int(np.floor(delay_samples))
     frac = delay_samples - delay_int
 
-    if delay_int > 0:
-        pad1 = np.zeros(delay_int, dtype=np.float32)
-        delayed_1 = np.concatenate([pad1, signal])[:n]
-        pad2 = np.zeros(delay_int + 1, dtype=np.float32)
-        delayed_2 = np.concatenate([pad2, signal])[:n]
-    elif delay_int == 0:
-        delayed_1 = signal.copy()
-        pad2 = np.zeros(1, dtype=np.float32)
-        delayed_2 = np.concatenate([pad2, signal])[:n]
-    else:
-        advance = -delay_int
-        pad1 = np.zeros(advance, dtype=np.float32)
-        delayed_1 = np.concatenate([signal[advance:], pad1])[:n]
-        if advance > 1:
-            pad2 = np.zeros(advance - 1, dtype=np.float32)
-            delayed_2 = np.concatenate([signal[advance - 1:], pad2])[:n]
+    def shift_array(arr: np.ndarray, shift: int) -> np.ndarray:
+        res = np.zeros_like(arr)
+        if shift > 0:
+            if shift < n:
+                res[shift:] = arr[:-shift]
+        elif shift < 0:
+            if -shift < n:
+                res[:shift] = arr[-shift:]
         else:
-            delayed_2 = signal.copy()
+            res[:] = arr
+        return res
+
+    delayed_1 = shift_array(signal, delay_int)
+    delayed_2 = shift_array(signal, delay_int + 1)
 
     return (1.0 - frac) * delayed_1 + frac * delayed_2
 
@@ -130,9 +126,9 @@ def apply_beamforming(
     """
     delays = compute_delays(steering_angle_deg, speaker_positions)
 
-    # Hanning window provides aperture amplitude taper.
-    # Reduces grating lobes and suppresses spatial aliasing.
-    weights = np.hanning(NUM_SPEAKERS).astype(np.float32)
+    # Hamming window provides aperture amplitude taper.
+    # Unlike Hanning, it does not zero out the outermost speakers.
+    weights = np.hamming(NUM_SPEAKERS).astype(np.float32)
 
     n_samples = len(signal)
     speaker_signals = np.zeros((NUM_SPEAKERS, n_samples), dtype=np.float32)
@@ -183,8 +179,9 @@ def compute_pattern_db(
 
     for idx, angle in enumerate(angles):
         # Propagation delay from each speaker to a far-field listener at 'angle'
+        # Negative sign: propagation to a target implies inverting the steering delay
         theta_rad = np.radians(angle)
-        delays_sec = (speaker_positions * np.sin(theta_rad)) / SPEED_OF_SOUND
+        delays_sec = -(speaker_positions * np.sin(theta_rad)) / SPEED_OF_SOUND
         delay_samples = (delays_sec * SAMPLE_RATE).astype(np.float32)
 
         summed = np.zeros(speaker_signals.shape[1], dtype=np.float32)
