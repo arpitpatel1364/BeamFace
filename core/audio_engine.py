@@ -96,9 +96,9 @@ class AudioEngine:
                 )
                 stereo = render_stereo(speaker_signals, angle, self.speaker_positions)
 
-                # Update RMS in the beam controller for UI display
+                # Update RMS in the beam controller for UI display (thread-safe)
                 rms_db = compute_rms_db(stereo)
-                self.beam_controller.current_rms_db = rms_db
+                self.beam_controller.set_rms_db(rms_db)
 
                 try:
                     self.audio_queue.put(stereo, timeout=0.1)
@@ -175,6 +175,13 @@ class AudioEngine:
     def stop(self):
         """Stop the audio producer thread and close the SoundDevice stream."""
         self.is_running = False
+
+        # Wait for the producer thread to finish before closing the stream so
+        # it does not attempt a queue.put() after the stream is gone.
+        if self._producer_thread is not None and self._producer_thread.is_alive():
+            self._producer_thread.join(timeout=2.0)
+            self._producer_thread = None
+
         if self.stream is not None:
             try:
                 self.stream.stop()

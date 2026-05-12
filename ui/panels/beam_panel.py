@@ -81,17 +81,19 @@ class BeamPanel(QWidget):
         """
         Recompute the beam pattern and redraw the polar plot.
 
-        Generates a short test block at the current steering angle, computes
-        the directivity pattern across all angles, and updates the plot.
-        Errors are caught and logged so a single bad frame never crashes the UI.
+        Only recomputes every PATTERN_UPDATE_INTERVAL calls to balance
+        visual responsiveness with CPU cost. Errors are caught and logged
+        so a single bad frame never crashes the UI.
         """
+        self.update_counter += 1
+        if self.update_counter % PATTERN_UPDATE_INTERVAL != 0:
+            return
+
         try:
             status = self.beam_controller.get_status()
             current_angle = status["current_angle"]
             target_angle = status["target_angle"]
 
-            # Generate a short block (faster than full buffer for pattern compute)
-            n_samples = int(_PATTERN_BLOCK_SECONDS * SAMPLE_RATE)
             test_signal = generate_sine_tone(
                 DEFAULT_FREQUENCY, _PATTERN_BLOCK_SECONDS, SAMPLE_RATE
             )

@@ -34,8 +34,8 @@ def compute_delays(
     Returns
     -------
     np.ndarray
-        Integer delay values in samples, shape (NUM_SPEAKERS,).
-        Positive = signal delayed (fireed late relative to center).
+        Float32 delay values in samples, shape (NUM_SPEAKERS,).
+        Positive = signal delayed (fired late relative to center).
     """
     theta_rad = np.radians(steering_angle_deg)
     # Propagation delay: time for wavefront to travel across the array
@@ -102,10 +102,10 @@ def apply_beamforming(
       1. Compute per-speaker time delays based on steering angle.
          This implements phase coherence: when summed at a distant listener
          in the steering direction, all speaker contributions arrive in phase.
-      2. Apply a Hanning window across the aperture (amplitude taper).
+      2. Apply a Hamming window across the aperture (amplitude taper).
          This reduces sidelobes in the beam pattern at the cost of slightly
-         widening the main lobe. The Hanning weights smoothly roll off
-         toward the array edges.
+         widening the main lobe. Unlike a Hanning window, Hamming does not
+         zero out the outermost speakers, preserving their contribution.
       3. Each speaker signal is the input delayed by its steering delay
          and scaled by its aperture weight.
 

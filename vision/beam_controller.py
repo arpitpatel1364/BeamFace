@@ -41,7 +41,7 @@ class BeamController:
         """
         Update the target angle based on face detection results.
 
-        If a face is detected, applies rolling-average smoothing to the raw
+        If a face is detected, applies Kalman-filter smoothing to the raw
         angle and sets it as the new target. If no face, returns to 0 degrees.
 
         Parameters
@@ -52,11 +52,12 @@ class BeamController:
         if face_data.detected:
             smoothed = self._smooth(face_data.angle_deg)
             self.set_target(smoothed)
-            self.face_detected = True
+            with self._lock:
+                self.face_detected = True
         else:
             self.set_target(0.0)
-            self.face_detected = False
             with self._lock:
+                self.face_detected = False
                 self._kf_initialized = False
 
     def _smooth(self, angle: float) -> float:
@@ -143,6 +144,15 @@ class BeamController:
         """
         with self._lock:
             self._smoothing = float(np.clip(value, 0.01, 1.0))
+
+    def set_rms_db(self, rms_db: float):
+        """
+        Thread-safe setter for the current RMS level (dBFS).
+
+        Called from the audio producer thread; guarded by the controller lock.
+        """
+        with self._lock:
+            self.current_rms_db = float(rms_db)
 
     def get_status(self) -> dict:
         """

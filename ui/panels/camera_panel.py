@@ -194,5 +194,8 @@ class CameraPanel(QWidget):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         bytes_per_line = ch * w
-        qimg = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        # Must use bytes(rgb.data) or rgb.tobytes() so the QImage owns a
+        # copy of the pixel data; passing rgb.data directly gives QImage a
+        # raw pointer that becomes dangling once numpy GC's the array.
+        qimg = QImage(rgb.tobytes(), w, h, bytes_per_line, QImage.Format_RGB888)
         self.video_label.setPixmap(QPixmap.fromImage(qimg))

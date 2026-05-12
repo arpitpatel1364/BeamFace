@@ -6,6 +6,7 @@ lifecycle (camera, audio engine, beam controller), and wires all inter-panel
 signals. This module owns the top-level QMainWindow.
 """
 
+import datetime
 import logging
 import time
 import traceback
@@ -18,8 +19,6 @@ from PyQt5.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
-    QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -82,7 +81,6 @@ class MainWindow(QMainWindow):
         self._fps_value = 0.0
         self._session_rows = []
         self._mode = "auto"
-        self._audio_active = False
 
         self._init_core_components()
         self._build_ui()
@@ -276,14 +274,9 @@ class MainWindow(QMainWindow):
 
         self._speaker_indicators = []
         for i in range(8):
-            alpha = int(weights[i] * 255)
-            color_hex = f"#{alpha:02x}aa{255:02x}"  # blue with variable alpha via lightness
-            # Use a simple opacity-weighted blue
-            intensity = int(weights[i] * 255)
-            r = 0
-            g = int(170 * weights[i])
-            b = 255
-            color = f"rgb({r},{g},{b})"
+            intensity = weights[i]
+            g = int(170 * intensity)
+            color = f"rgb(0,{g},255)"
             sq = QLabel()
             sq.setFixedSize(24, 24)
             sq.setStyleSheet(
@@ -360,7 +353,6 @@ class MainWindow(QMainWindow):
             self.lbl_distance[1].setText("--- cm")
 
         # Accumulate session log row
-        import datetime
         row = {
             "timestamp": datetime.datetime.now().isoformat(),
             "face_detected": face_data.detected,
@@ -385,7 +377,7 @@ class MainWindow(QMainWindow):
                 "target_angle": status["target_angle"],
                 "rms_db": status["current_rms_db"],
                 "face_detected": status["face_detected"],
-                "audio_active": self._audio_active,
+                "audio_active": self.control_panel.is_audio_active(),
                 "mode": self._mode,
             }
         )
@@ -398,18 +390,25 @@ class MainWindow(QMainWindow):
     def _on_camera_restart(self, camera_index: int):
         """Restart the camera at the specified device index."""
         logger.info("Restarting camera at index %d", camera_index)
-        self.camera_panel._worker.stop()
+
+        # Stop the old worker and disconnect its signal before creating a new one
+        # to avoid double-emission on the first frame after restart.
+        old_worker = self.camera_panel._worker
+        old_worker.frame_processed.disconnect(self.camera_panel.update_frame)
+        old_worker.stop()
+
         self.face_detector.release()
         self.face_detector = FaceDetector(camera_index=camera_index)
         try:
             self.face_detector.initialize()
             self.camera_panel.face_detector = self.face_detector
-            
+
             from ui.panels.camera_panel import VideoWorker
-            self.camera_panel._worker = VideoWorker(self.face_detector)
-            self.camera_panel._worker.frame_processed.connect(self.camera_panel.update_frame)
-            self.camera_panel._worker.start()
-            
+            new_worker = VideoWorker(self.face_detector)
+            new_worker.frame_processed.connect(self.camera_panel.update_frame)
+            self.camera_panel._worker = new_worker
+            new_worker.start()
+
             logger.info("Camera restarted successfully")
         except RuntimeError as exc:
             logger.error("Camera restart failed: %s", exc)
