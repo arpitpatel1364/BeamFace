@@ -8,6 +8,7 @@ from core.array_geometry import get_speaker_positions
 from core.beamformer import compute_delays, apply_beamforming, compute_pattern_db
 from core.renderer import propagate_to_listener, render_stereo
 from core.audio_source import generate_sine_tone, load_wav, get_looping_block
+from core.audio_engine import AudioEngine
 from vision.beam_controller import BeamController, FaceData
 
 class TestArrayGeometry(unittest.TestCase):
@@ -136,6 +137,21 @@ class TestBeamController(unittest.TestCase):
         controller.set_smoothing(0.5)
         controller.lerp_step()
         self.assertAlmostEqual(controller.get_current_angle(), 21.0, places=1)
+
+class TestAudioEngine(unittest.TestCase):
+    def test_audio_engine_modes(self):
+        controller = BeamController()
+        engine = AudioEngine(controller)
+        self.assertEqual(engine.source_mode, "sine")
+        
+        engine.set_source_mode("system")
+        self.assertEqual(engine.source_mode, "system")
+        
+        # Test find_devices doesn't crash even if PortAudio or default devices are missing/failing
+        input_dev, output_dev = engine.find_devices()
+        # Should return a tuple (can be indices or None if PortAudio fails, but shouldn't raise exception)
+        self.assertTrue(isinstance(input_dev, (int, type(None))) or input_dev is None)
+        self.assertTrue(isinstance(output_dev, (int, type(None))) or output_dev is None)
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,8 @@ import queue
 import threading
 import logging
 import traceback
-
+import subprocess
+import time
 
 import numpy as np
 
@@ -22,6 +23,72 @@ from core.beamformer import apply_beamforming
 from core.renderer import render_stereo, compute_rms_db
 
 logger = logging.getLogger("beamface.audio_engine")
+
+
+class PulseAudioHelper:
+    def __init__(self):
+        self.original_sink = None
+        self.original_source = None
+        self.module_id = None
+        self.is_configured = False
+
+    def setup(self):
+        """Set up the virtual sink and route system audio to it."""
+        try:
+            # 1. Get current default sink and source
+            self.original_sink = subprocess.check_output(
+                ["pactl", "get-default-sink"], text=True
+            ).strip()
+            try:
+                self.original_source = subprocess.check_output(
+                    ["pactl", "get-default-source"], text=True
+                ).strip()
+            except Exception:
+                self.original_source = None
+
+            logger.info("Original default sink: %s", self.original_sink)
+            logger.info("Original default source: %s", self.original_source)
+
+            # 2. Check if beamface_sink is already loaded
+            sinks = subprocess.check_output(["pactl", "list", "sinks", "short"], text=True)
+            if "beamface_sink" not in sinks:
+                # Load the null sink module
+                out = subprocess.check_output([
+                    "pactl", "load-module", "module-null-sink",
+                    "sink_name=beamface_sink",
+                    "sink_properties=device.description=BeamFace_Virtual_Sink"
+                ], text=True)
+                self.module_id = out.strip()
+                logger.info("Loaded virtual sink module, ID: %s", self.module_id)
+                # Wait a small moment for the device to register
+                time.sleep(0.5)
+            else:
+                logger.info("Virtual sink 'beamface_sink' is already loaded.")
+
+            # 3. Route system audio to the virtual sink
+            subprocess.check_call(["pactl", "set-default-sink", "beamface_sink"])
+            subprocess.check_call(["pactl", "set-default-source", "beamface_sink.monitor"])
+            logger.info("System audio successfully routed to BeamFace_Virtual_Sink.")
+            self.is_configured = True
+
+        except Exception as e:
+            logger.error("Failed to configure PulseAudio routing: %s", e)
+            self.restore()
+
+    def restore(self):
+        """Restore the original audio routing."""
+        if not self.is_configured:
+            return
+        try:
+            if self.original_sink:
+                subprocess.check_call(["pactl", "set-default-sink", self.original_sink])
+                logger.info("Restored default sink to: %s", self.original_sink)
+            if self.original_source:
+                subprocess.check_call(["pactl", "set-default-source", self.original_source])
+                logger.info("Restored default source to: %s", self.original_source)
+            self.is_configured = False
+        except Exception as e:
+            logger.error("Failed to restore PulseAudio routing: %s", e)
 
 
 class AudioEngine:
@@ -48,6 +115,13 @@ class AudioEngine:
         self.block_index = 0
         self.stream = None
         self._producer_thread = None
+        self.source_mode = "sine"
+        self.pa_helper = PulseAudioHelper()
+
+    def set_source_mode(self, mode: str):
+        """Set the audio source mode ('sine', 'wav', or 'system')."""
+        self.source_mode = mode
+        logger.info("Audio source mode set to: %s", mode)
 
     def load_source(self, filepath: str = None, frequency: float = DEFAULT_FREQUENCY):
         """
@@ -64,13 +138,16 @@ class AudioEngine:
             try:
                 signal, _ = load_wav(filepath)
                 self.source_signal = signal
+                self.source_mode = "wav"
                 logger.info("Loaded audio source from file: %s", filepath)
             except Exception as exc:
                 logger.error("Failed to load WAV file: %s", exc)
                 self.source_signal = generate_sine_tone(frequency, DEFAULT_DURATION, self.sample_rate)
+                self.source_mode = "sine"
                 logger.info("Falling back to generated sine tone at %.1f Hz", frequency)
         else:
             self.source_signal = generate_sine_tone(frequency, DEFAULT_DURATION, self.sample_rate)
+            self.source_mode = "sine"
             logger.info("Generated sine tone source at %.1f Hz", frequency)
 
     def producer_loop(self):
@@ -134,50 +211,164 @@ class AudioEngine:
         except queue.Empty:
             outdata[:] = np.zeros((frames, 2), dtype=np.float32)
 
+    def system_audio_callback(self, indata, outdata, frames, time_info, status):
+        """
+        SoundDevice real-time duplex callback for system audio routing.
+        """
+        if status:
+            logger.warning("SoundDevice duplex callback status: %s", status)
+
+        try:
+            # 1. Convert input block to mono
+            if indata.shape[1] > 1:
+                mono_input = indata.mean(axis=1)
+            else:
+                mono_input = indata[:, 0]
+
+            # 2. Get steering angle from controller
+            angle = self.beam_controller.get_current_angle()
+
+            # 3. Apply beamforming & render stereo
+            speaker_signals = apply_beamforming(mono_input, angle, self.speaker_positions)
+            stereo = render_stereo(speaker_signals, angle, self.speaker_positions)
+
+            # 4. Write to output buffer
+            outdata[:] = stereo
+
+            # 5. Update RMS level for UI
+            rms_db = compute_rms_db(stereo)
+            self.beam_controller.set_rms_db(rms_db)
+
+        except Exception:
+            logger.error("Exception in system audio callback:\n%s", traceback.format_exc())
+            outdata[:] = np.zeros((frames, 2), dtype=np.float32)
+
+    def find_devices(self):
+        """Find the virtual input sink monitor and physical output device."""
+        try:
+            import sounddevice as sd
+            devices = sd.query_devices()
+        except Exception as exc:
+            logger.error("Failed to query audio devices: %s", exc)
+            return None, None
+
+        input_idx = None
+        output_idx = None
+
+        # Look for the virtual sink monitor
+        for idx, dev in enumerate(devices):
+            name = dev.get('name', '')
+            max_inputs = dev.get('max_input_channels', 0)
+            if max_inputs > 0 and ("beamface_sink.monitor" in name or "BeamFace_Virtual_Sink.monitor" in name or "BeamFace_Audio_Sink.monitor" in name):
+                input_idx = idx
+                break
+
+        # Fallback to default devices if not found
+        try:
+            default_devices = sd.default.device
+            if input_idx is None:
+                input_idx = default_devices[0]
+            output_idx = default_devices[1]
+        except Exception:
+            logger.error("Failed to get default audio devices.")
+            
+        return input_idx, output_idx
+
     def start(self):
-        """Start the audio producer thread and open the SoundDevice output stream."""
+        """Start the audio engine using either system duplex routing or local generator."""
         if self.is_running:
             logger.warning("AudioEngine.start() called while already running")
             return
 
-        if self.source_signal is None:
-            self.load_source()
-
         self.is_running = True
         self.block_index = 0
 
-        # Drain the queue to ensure no stale audio blocks are played
-        while not self.audio_queue.empty():
+        if self.source_mode == "system":
             try:
-                self.audio_queue.get_nowait()
-            except queue.Empty:
-                break
+                # 1. Setup PulseAudio routing
+                self.pa_helper.setup()
 
-        self._producer_thread = threading.Thread(
-            target=self.producer_loop, daemon=True, name="AudioProducer"
-        )
-        self._producer_thread.start()
+                # 2. Find proper devices
+                import sounddevice as sd
+                output_device = self.find_physical_output()
+                input_device = "default"
 
+                logger.info("Using system audio duplex devices: input=%s, output=%s", input_device, output_device)
+
+                self.stream = sd.Stream(
+                    device=(input_device, output_device),
+                    samplerate=self.sample_rate,
+                    blocksize=self.block_size,
+                    dtype=np.float32,
+                    channels=(2, 2),  # Stereo input, stereo output
+                    callback=self.system_audio_callback,
+                )
+                self.stream.start()
+                logger.info("Real-time system audio duplex stream started.")
+            except Exception:
+                logger.error(
+                    "Failed to open duplex audio stream for system routing:\n%s",
+                    traceback.format_exc()
+                )
+                self.is_running = False
+        else:
+            if self.source_signal is None:
+                self.load_source()
+
+            # Drain the queue to ensure no stale audio blocks are played
+            while not self.audio_queue.empty():
+                try:
+                    self.audio_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+            self._producer_thread = threading.Thread(
+                target=self.producer_loop, daemon=True, name="AudioProducer"
+            )
+            self._producer_thread.start()
+
+            try:
+                import sounddevice as sd
+                self.stream = sd.OutputStream(
+                    samplerate=self.sample_rate,
+                    channels=2,
+                    blocksize=self.block_size,
+                    dtype=np.float32,
+                    callback=self.audio_callback,
+                )
+                self.stream.start()
+                logger.info(
+                    "Audio stream started: %d Hz, block size %d", self.sample_rate, self.block_size
+                )
+            except Exception:
+                logger.error(
+                    "Failed to open audio output stream:\n%s", traceback.format_exc()
+                )
+                self.is_running = False
+
+    def find_physical_output(self):
+        """Find the physical output hardware card (bypassing virtual loopback)."""
         try:
-            
-            # pyrefly: ignore [missing-import]
             import sounddevice as sd
-            self.stream = sd.OutputStream(
-                samplerate=self.sample_rate,
-                channels=2,
-                blocksize=self.block_size,
-                dtype=np.float32,
-                callback=self.audio_callback,
-            )
-            self.stream.start()
-            logger.info(
-                "Audio stream started: %d Hz, block size %d", self.sample_rate, self.block_size
-            )
+            devices = sd.query_devices()
+        except Exception as exc:
+            logger.error("Failed to query audio devices: %s", exc)
+            return None
+
+        # 1. Search for front output
+        for idx, dev in enumerate(devices):
+            if dev.get('max_output_channels', 0) > 0 and dev.get('name', '') == 'front':
+                return idx
+        # 2. Search for PCH card Analog
+        for idx, dev in enumerate(devices):
+            name = dev.get('name', '')
+            if dev.get('max_output_channels', 0) > 0 and ('Analog' in name or 'hw:0,0' in name or 'ALC897' in name):
+                return idx
+        # 3. Fallback to default output
+        try:
+            return sd.default.device[1]
         except Exception:
-            logger.error(
-                "Failed to open audio output stream:\n%s", traceback.format_exc()
-            )
-            self.is_running = False
+            return None
 
     def stop(self):
         """Stop the audio producer thread and close the SoundDevice stream."""
@@ -199,3 +390,6 @@ class AudioEngine:
                     "Error closing audio stream:\n%s", traceback.format_exc()
                 )
             self.stream = None
+
+        # Restore original system audio routing settings
+        self.pa_helper.restore()

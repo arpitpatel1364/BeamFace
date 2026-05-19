@@ -59,6 +59,12 @@ class ControlPanel(QWidget):
         self._build_ui()
         self._connect_signals()
 
+        # Sync UI initial selections with the AudioEngine
+        self._on_source_mode_changed()
+        self._on_apply_audio()
+        if self.chk_audio_enable.isChecked():
+            self._on_audio_toggle(Qt.Checked)
+
     def _build_ui(self):
         """Build the scrollable panel with all control sections."""
         outer_layout = QVBoxLayout(self)
@@ -90,12 +96,14 @@ class ControlPanel(QWidget):
         layout.setSpacing(6)
 
         self.radio_sine = QRadioButton("Sine Tone")
-        self.radio_sine.setChecked(True)
         self.radio_wav = QRadioButton("Load WAV File")
+        self.radio_system = QRadioButton("System Audio Route")
+        self.radio_system.setChecked(True)
 
         self._audio_source_group = QButtonGroup(self)
         self._audio_source_group.addButton(self.radio_sine)
         self._audio_source_group.addButton(self.radio_wav)
+        self._audio_source_group.addButton(self.radio_system)
 
         self.btn_browse = QPushButton("Browse...")
         self.btn_browse.setEnabled(False)
@@ -115,6 +123,7 @@ class ControlPanel(QWidget):
 
         layout.addWidget(self.radio_sine)
         layout.addWidget(self.radio_wav)
+        layout.addWidget(self.radio_system)
         layout.addWidget(self.btn_browse)
         layout.addWidget(self.lbl_file)
         layout.addLayout(freq_row)
@@ -199,7 +208,7 @@ class ControlPanel(QWidget):
         layout.setSpacing(6)
 
         self.chk_audio_enable = QCheckBox("Enable Audio Output")
-        self.chk_audio_enable.setChecked(False)
+        self.chk_audio_enable.setChecked(True)
 
         warning = QLabel(
             "Requires multi-channel audio device for full beamforming output. "
@@ -217,6 +226,7 @@ class ControlPanel(QWidget):
         """Wire internal widget signals to handlers."""
         self.radio_sine.toggled.connect(self._on_source_mode_changed)
         self.radio_wav.toggled.connect(self._on_source_mode_changed)
+        self.radio_system.toggled.connect(self._on_source_mode_changed)
         self.btn_browse.clicked.connect(self._on_browse)
         self.btn_apply_audio.clicked.connect(self._on_apply_audio)
 
@@ -234,10 +244,15 @@ class ControlPanel(QWidget):
         self.chk_audio_enable.stateChanged.connect(self._on_audio_toggle)
 
     def _on_source_mode_changed(self):
-        """Enable or disable the Browse button based on selected source mode."""
+        """Enable or disable Browse/Frequency inputs based on selected source mode."""
         wav_selected = self.radio_wav.isChecked()
+        system_selected = self.radio_system.isChecked()
         self.btn_browse.setEnabled(wav_selected)
-        if not wav_selected:
+        self.spin_frequency.setEnabled(not system_selected)
+        if system_selected:
+            self._wav_filepath = ""
+            self.lbl_file.setText("Capturing from virtual system input...")
+        elif not wav_selected:
             self._wav_filepath = ""
             self.lbl_file.setText("Default: 1 kHz sine tone")
 
@@ -255,12 +270,26 @@ class ControlPanel(QWidget):
 
     def _on_apply_audio(self):
         """Reload the audio engine source with current UI settings."""
-        filepath = self._wav_filepath if self.radio_wav.isChecked() else None
-        frequency = self.spin_frequency.value()
-        logger.info(
-            "Applying audio settings: filepath=%s, freq=%d Hz", filepath, frequency
-        )
-        self.audio_engine.load_source(filepath=filepath, frequency=frequency)
+        was_running = self.audio_engine.is_running
+        if was_running:
+            self.audio_engine.stop()
+
+        if self.radio_system.isChecked():
+            self.audio_engine.set_source_mode("system")
+            filepath = None
+            frequency = 0
+            logger.info("Applying system audio routing settings.")
+        else:
+            filepath = self._wav_filepath if self.radio_wav.isChecked() else None
+            frequency = self.spin_frequency.value()
+            logger.info(
+                "Applying audio settings: filepath=%s, freq=%d Hz", filepath, frequency
+            )
+            self.audio_engine.load_source(filepath=filepath, frequency=frequency)
+
+        if was_running:
+            self.audio_engine.start()
+
         self.audio_source_changed.emit(filepath or "", frequency)
 
     def _on_mode_changed(self, index: int):
