@@ -81,6 +81,13 @@ def load_wav(filepath: str):
     if data.ndim == 2:
         data = data.mean(axis=1)
 
+    # Resample if sample rate does not match the system SAMPLE_RATE
+    if rate != SAMPLE_RATE:
+        import scipy.signal
+        num_samples = int(len(data) * SAMPLE_RATE / rate)
+        data = scipy.signal.resample(data, num_samples).astype(np.float32)
+        rate = SAMPLE_RATE
+
     # Normalize to [-1, 1]
     peak = np.max(np.abs(data))
     if peak > 0.0:

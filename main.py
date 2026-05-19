@@ -21,10 +21,10 @@ def main():
     """Initialize the Qt application, show the main window, and enter the event loop."""
     logger.info("Starting BeamFace v1.0.0")
 
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
     app.setApplicationName("BeamFace")
     app.setApplicationVersion("1.0.0")
-    app.setAttribute(Qt.AA_EnableHighDpiScaling)
 
     window = MainWindow()
     window.show()

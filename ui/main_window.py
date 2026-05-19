@@ -385,6 +385,7 @@ class MainWindow(QMainWindow):
     def _on_mode_changed(self, mode: str):
         """Handle steering mode changes from the control panel."""
         self._mode = mode
+        self.beam_controller.set_mode(mode)
         logger.info("Steering mode set to: %s", mode)
 
     def _on_camera_restart(self, camera_index: int):

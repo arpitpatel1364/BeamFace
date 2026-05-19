@@ -37,20 +37,16 @@ def propagate_to_listener(
         Float32 mono array of length N.
     """
     theta_rad = np.radians(listener_angle_deg)
-    delays_sec = (speaker_positions * np.sin(theta_rad)) / SPEED_OF_SOUND
-    delay_samples = np.round(delays_sec * SAMPLE_RATE).astype(np.int32)
+    # Negative sign: propagation to a listener inverts the steering delay direction
+    delays_sec = -(speaker_positions * np.sin(theta_rad)) / SPEED_OF_SOUND
+    delay_samples = (delays_sec * SAMPLE_RATE).astype(np.float32)
 
     n_samples = speaker_signals.shape[1]
     summed = np.zeros(n_samples, dtype=np.float32)
 
     for i in range(NUM_SPEAKERS):
-        propagated = apply_delay_to_signal(speaker_signals[i], int(delay_samples[i]))
+        propagated = apply_delay_to_signal(speaker_signals[i], float(delay_samples[i]))
         summed += propagated
-
-    # Normalize to prevent clipping
-    peak = np.max(np.abs(summed))
-    if peak > 0.0:
-        summed = summed / peak
 
     return summed
 
@@ -64,8 +60,8 @@ def render_stereo(
     Render a stereo output from beamformed speaker signals.
 
     Simulates binaural hearing by computing the left and right ear signals
-    at slightly different angles (3 degrees apart), mimicking the inter-aural
-    time difference that gives spatial hearing cues.
+    at slightly different angles (3 degrees apart), mimicking both inter-aural
+    time difference and inter-aural level difference cues.
 
     Parameters
     ----------
@@ -87,6 +83,12 @@ def render_stereo(
     right = propagate_to_listener(
         speaker_signals, listener_angle_deg + 3.0, speaker_positions
     )
+
+    # Normalize jointly to prevent clipping and preserve Inter-aural Level Differences (ILD)
+    peak = max(float(np.max(np.abs(left))), float(np.max(np.abs(right))))
+    if peak > 0.0:
+        left = left / peak
+        right = right / peak
 
     n_samples = len(left)
     stereo = np.zeros((n_samples, 2), dtype=np.float32)

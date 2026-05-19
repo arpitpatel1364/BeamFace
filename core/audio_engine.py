@@ -65,7 +65,7 @@ class AudioEngine:
                 signal, _ = load_wav(filepath)
                 self.source_signal = signal
                 logger.info("Loaded audio source from file: %s", filepath)
-            except FileNotFoundError as exc:
+            except Exception as exc:
                 logger.error("Failed to load WAV file: %s", exc)
                 self.source_signal = generate_sine_tone(frequency, DEFAULT_DURATION, self.sample_rate)
                 logger.info("Falling back to generated sine tone at %.1f Hz", frequency)
@@ -145,6 +145,13 @@ class AudioEngine:
 
         self.is_running = True
         self.block_index = 0
+
+        # Drain the queue to ensure no stale audio blocks are played
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
 
         self._producer_thread = threading.Thread(
             target=self.producer_loop, daemon=True, name="AudioProducer"

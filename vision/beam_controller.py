@@ -36,29 +36,37 @@ class BeamController:
         self._kf_initialized = False
         self.face_detected = False
         self.current_rms_db = -60.0
+        self.mode = "auto"
+
+    def set_mode(self, mode: str):
+        """Set the steering mode: 'auto' or 'manual'."""
+        with self._lock:
+            self.mode = mode
 
     def update_from_face(self, face_data: FaceData):
         """
         Update the target angle based on face detection results.
 
         If a face is detected, applies Kalman-filter smoothing to the raw
-        angle and sets it as the new target. If no face, returns to 0 degrees.
+        angle and sets it as the new target (only in 'auto' mode).
+        In both modes, updates the face detection status.
 
         Parameters
         ----------
         face_data : FaceData
             Detection result from FaceDetector.get_face_data().
         """
-        if face_data.detected:
-            smoothed = self._smooth(face_data.angle_deg)
-            self.set_target(smoothed)
-            with self._lock:
-                self.face_detected = True
-        else:
-            self.set_target(0.0)
-            with self._lock:
-                self.face_detected = False
+        with self._lock:
+            self.face_detected = face_data.detected
+            if not face_data.detected:
                 self._kf_initialized = False
+
+            if self.mode == "auto":
+                if face_data.detected:
+                    smoothed = self._smooth(face_data.angle_deg)
+                    self.set_target(smoothed)
+                else:
+                    self.set_target(0.0)
 
     def _smooth(self, angle: float) -> float:
         """
